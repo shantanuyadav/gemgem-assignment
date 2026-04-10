@@ -488,3 +488,97 @@ resource "aws_appautoscaling_policy" "cpu_tracking" {
     }
   }
 }
+# ---- adding alb balancers ------- 
+resource "aws_cloudwatch_metric_alarm" "alb_5xx_rate" {
+  alarm_name          = "${local.name_prefix}-high-5xx-rate"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "1"
+  threshold           = "1" # 1 percent
+  alarm_description   = "Alarm when ALB 5xx error rate exceeds 1% for 5 minutes"
+  alarm_actions       = [aws_sns_topic.alb_5xx_alerts.arn]
+  ok_actions          = [aws_sns_topic.alb_5xx_alerts.arn]
+  treat_missing_data  = "notBreaching"
+
+  metric_query {
+    id          = "e1"
+    expression  = "(m1/m2)*100"
+    label       = "5xx Error Rate (%)"
+    return_data = "true"
+  }
+
+  metric_query {
+    id = "m1"
+    metric {
+      metric_name = "HTTPCode_Target_5XX_Count"
+      namespace   = "AWS/ApplicationELB"
+      period      = "300"
+      stat        = "Sum"
+      dimensions = {
+        LoadBalancer = local.alb_arn_suffix
+      }
+    }
+  }
+
+  metric_query {
+    id = "m2"
+    metric {
+      metric_name = "RequestCount"
+      namespace   = "AWS/ApplicationELB"
+      period      = "300"
+      stat        = "Sum"
+      dimensions = {
+        LoadBalancer = local.alb_arn_suffix
+      }
+    }
+  }
+}
+
+#-------sns system for mailing -----
+resource "aws_sns_topic" "alb_5xx_alerts" {
+  name = "${local.name_prefix}-5xx-alerts"
+}
+
+resource "aws_sns_topic_subscription" "email_target" {
+  topic_arn = aws_sns_topic.alb_5xx_alerts.arn
+  protocol  = "email"
+  endpoint  = local.email_address
+}
+
+# IMPORTANT: Allows CloudWatch to actually send messages to this SNS topic
+resource "aws_sns_topic_policy" "cloudwatch_to_sns" {
+  arn = aws_sns_topic.alb_5xx_alerts.arn
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "cloudwatch.amazonaws.com" }
+      Action    = "sns:Publish"
+      Resource  = aws_sns_topic.alb_5xx_alerts.arn
+    }]
+  })
+}
+
+#--------- iam roles for alerting ----
+resource "aws_sns_topic" "alb_5xx_alerts" {
+  name = "${local.name_prefix}-5xx-alerts"
+}
+
+resource "aws_sns_topic_subscription" "email_target" {
+  topic_arn = aws_sns_topic.alb_5xx_alerts.arn
+  protocol  = "email"
+  endpoint  = local.email_address
+}
+
+# IMPORTANT: Allows CloudWatch to actually send messages to this SNS topic
+resource "aws_sns_topic_policy" "cloudwatch_to_sns" {
+  arn = aws_sns_topic.alb_5xx_alerts.arn
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "cloudwatch.amazonaws.com" }
+      Action    = "sns:Publish"
+      Resource  = aws_sns_topic.alb_5xx_alerts.arn
+    }]
+  })
+}
