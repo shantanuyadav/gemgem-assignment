@@ -190,3 +190,11 @@ variable "alb_certificate_arn" {
   type    = string
   default = ""
 }
+
+#--variables for alerting---
+locals {
+  name_prefix = "webapp-prod"
+  email_address = "alerts@example.com"
+  # The suffix is found in the ALB ARN: app/<name>/<id>
+  alb_arn_suffix = "app/my-load-balancer/50dc6c495c0c9188" 
+}
